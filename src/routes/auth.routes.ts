@@ -7,6 +7,7 @@ import { z } from "zod";
 import { env } from "../config/env";
 import { asyncHandler } from "../middlewares/asyncHandler";
 import { validateBody } from "../middlewares/validate";
+import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
 import { PasswordResetToken } from "../models/PasswordResetToken";
 import { RefreshToken } from "../models/RefreshToken";
 import { User } from "../models/User";
@@ -34,6 +35,17 @@ const loginSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
+const profileSchema = z.object({
+  firstName: z.string().min(1).max(255),
+  lastName: z.string().min(1).max(255),
+  email: z.string().email().min(5).max(255),
+  phone: z.string().min(6).max(50),
+});
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(8).max(128),
+});
+
 const forgotPasswordSchema = z.object({
   email: z.string().email().min(5).max(255),
 });
@@ -50,6 +62,17 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "too_many_attempts" },
 });
+
+function buildCurrentUser(user: { firstName?: string; lastName?: string; email: string }) {
+  const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Usuario";
+  const initials = `${(user.firstName?.[0] ?? "").toUpperCase()}${(user.lastName?.[0] ?? "").toUpperCase()}` || "--";
+  return {
+    initials,
+    name,
+    role: "Empleado",
+    email: user.email,
+  };
+}
 
 router.post(
   "/register",
@@ -124,6 +147,110 @@ router.post(
 
     clearRefreshTokenCookie(res);
     return res.status(204).send();
+  })
+);
+
+router.get(
+  "/users/current",
+  asyncHandler(requireAuth),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    return res.status(200).json({
+      message: "current_user_loaded",
+      user: buildCurrentUser(user),
+    });
+  })
+);
+
+router.get(
+  "/users/profile",
+  asyncHandler(requireAuth),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    return res.status(200).json({
+      message: "profile_loaded",
+      profile: {
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        email: user.email,
+        phone: user.phone ?? "",
+      },
+    });
+  })
+);
+
+router.put(
+  "/users/profile",
+  asyncHandler(requireAuth),
+  validateBody(profileSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { firstName, lastName, email, phone } = req.body as z.infer<typeof profileSchema>;
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    const existingEmailUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    });
+    if (existingEmailUser) {
+      return res.status(409).json({
+        message: "email_in_use",
+        errors: { email: "Este correo ya está en uso." },
+      });
+    }
+
+    user.firstName = firstName.trim();
+    user.lastName = lastName.trim();
+    user.email = normalizedEmail;
+    user.phone = phone.trim();
+    await user.save();
+
+    return res.status(200).json({
+      message: "profile_updated",
+      profile: {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone ?? "",
+      },
+    });
+  })
+);
+
+router.post(
+  "/users/delete-account",
+  asyncHandler(requireAuth),
+  validateBody(deleteAccountSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { password } = req.body as z.infer<typeof deleteAccountSchema>;
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      return res.status(401).json({ message: "invalid_credentials" });
+    }
+
+    await User.findByIdAndDelete(user._id);
+    await RefreshToken.updateMany({ userId: user._id, revokedAt: null }, { revokedAt: new Date() });
+    clearRefreshTokenCookie(res);
+
+    return res.status(200).json({ message: "account_deleted" });
   })
 );
 
