@@ -22,6 +22,9 @@ import {
 const router = Router();
 
 const registerSchema = z.object({
+  firstName: z.string().min(1).max(255),
+  lastName: z.string().min(1).max(255),
+  phone: z.string().min(6).max(50),
   email: z.string().email().min(5).max(255),
   password: z.string().min(8).max(128),
 });
@@ -52,7 +55,7 @@ router.post(
   "/register",
   validateBody(registerSchema),
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body as z.infer<typeof registerSchema>;
+    const { firstName, lastName, phone, email, password } = req.body as z.infer<typeof registerSchema>;
     const normalizedEmail = email.toLowerCase();
 
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -61,7 +64,13 @@ router.post(
     }
 
     const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
-    const user = await User.create({ email: normalizedEmail, passwordHash });
+    const user = await User.create({
+      email: normalizedEmail,
+      passwordHash,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+    });
 
     return res.status(201).json({ id: user._id.toString() });
   })

@@ -4,6 +4,9 @@ export interface UserDocument {
   _id: Types.ObjectId;
   email: string;
   passwordHash: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +21,9 @@ const userSchema = new Schema<UserDocument>(
       trim: true,
     },
     passwordHash: { type: String, required: true },
+    firstName: { type: String, trim: true },
+    lastName: { type: String, trim: true },
+    phone: { type: String, trim: true },
   },
   { timestamps: true }
 );
