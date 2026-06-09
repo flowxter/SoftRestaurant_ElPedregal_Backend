@@ -262,12 +262,17 @@ router.post(
     const normalizedEmail = email.toLowerCase();
 
     const user = await User.findOne({ email: normalizedEmail });
-    let resetToken: string | undefined;
+    
+    // Always return success to prevent email enumeration attacks
+    if (!user) {
+      return res.status(200).json({
+        message: "reset_token_sent",
+      });
+    }
 
-    if (user) {
+    try {
       const jti = crypto.randomBytes(16).toString("hex");
-      resetToken = signResetToken(user._id.toString(), jti);
-
+      const resetToken = signResetToken(user._id.toString(), jti);
       const tokenHash = hashToken(resetToken);
       const expiresAt = new Date(
         Date.now() + env.RESET_TOKEN_EXPIRES_MINUTES * 60 * 1000
@@ -278,17 +283,20 @@ router.post(
         tokenHash,
         expiresAt,
       });
+
+      // Send email with reset link
+      const { PasswordRecoveryEmail } = await import("../utils/passwordRecoveryEmail");
+      await PasswordRecoveryEmail.sendRecoveryEmail(user.email, resetToken);
+
+      console.log(`[forgot-password] Password recovery email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error("[forgot-password] Failed to send email:", emailError);
+      // Don't expose internal email errors to client
     }
 
-    const payload: { message: string; resetToken?: string } = {
+    return res.status(200).json({
       message: "reset_token_sent",
-    };
-
-    if (resetToken && env.NODE_ENV !== "production") {
-      payload.resetToken = resetToken;
-    }
-
-    return res.status(200).json(payload);
+    });
   })
 );
 
@@ -328,10 +336,22 @@ router.post(
     }
 
     const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
-    await User.findByIdAndUpdate(resetRecord.userId, { passwordHash });
+    const user = await User.findByIdAndUpdate(resetRecord.userId, { passwordHash });
 
     resetRecord.usedAt = new Date();
     await resetRecord.save();
+
+    // Send confirmation email
+    try {
+      if (user) {
+        const { PasswordRecoveryEmail } = await import("../utils/passwordRecoveryEmail");
+        const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Usuario";
+        await PasswordRecoveryEmail.sendPasswordChangedEmail(user.email, name);
+      }
+    } catch (emailError) {
+      console.error("[reset-password] Failed to send confirmation email:", emailError);
+      // Don't fail the password reset if email fails
+    }
 
     return res.status(200).json({ message: "password_reset_ok" });
   })

@@ -27,6 +27,15 @@ const envSchema = z.object({
     .optional()
     .transform((value) => (value && value.trim().length > 0 ? value.trim() : undefined)),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:3000"),
+  EMAIL_FROM: z.string().default("El Pedregal <no-reply@elpedregal.com>"),
+  GMAIL_USER: z.string().default(""),
+  GMAIL_APP_PASSWORD: z.string().default(""),
+  RESEND_API_KEY: z
+    .string()
+    .optional()
+    .transform((value) => (value?.trim().length ? value.trim() : undefined)),
+  RESEND_FROM: z.string().default("El Pedregal <onboarding@resend.dev>"),
+  FRONTEND_URL: z.string().default("http://localhost:5173"),
 });
 
 const parsed = envSchema.safeParse(process.env);
