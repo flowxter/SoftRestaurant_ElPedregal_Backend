@@ -1,5 +1,7 @@
 import { Schema, model, Types } from "mongoose";
 
+export type UserRole = "admin" | "employee" | "user";
+
 export interface UserDocument {
   _id: Types.ObjectId;
   email: string;
@@ -7,6 +9,7 @@ export interface UserDocument {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  role: UserRole;
   createdAt: Date;
   updatedAt: Date;
 }
