@@ -17,6 +17,10 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Uploaded files
+uploads/*
+!uploads/products/.gitkeep
+
 # Coverage
 coverage/
 

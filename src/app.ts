@@ -1,3 +1,5 @@
+import path from "path";
+
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
@@ -6,6 +8,7 @@ import helmet from "helmet";
 import { env } from "./config/env";
 import { errorHandler, notFound } from "./middlewares/errorHandler";
 import authRoutes from "./routes/auth.routes";
+import productRoutes from "./routes/product.routes";
 
 const app = express();
 
@@ -25,7 +28,10 @@ app.use(cookieParser());
 
 app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
 
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 app.use("/api/auth", authRoutes);
+app.use("/api/products", productRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
