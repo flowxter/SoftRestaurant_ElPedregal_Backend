@@ -9,6 +9,7 @@ import { env } from "./config/env";
 import { errorHandler, notFound } from "./middlewares/errorHandler";
 import authRoutes from "./routes/auth.routes";
 import productRoutes from "./routes/product.routes";
+import promotionRoutes from "./routes/promotion.routes";
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/promotions", promotionRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
