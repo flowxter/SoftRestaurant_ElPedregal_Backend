@@ -18,7 +18,11 @@ const corsOrigins = env.CORS_ORIGIN.split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(helmet());
+//app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
 app.use(
   cors({
     origin: corsOrigins.length > 1 ? corsOrigins : corsOrigins[0],
