@@ -7,6 +7,7 @@ export interface ProductDocument {
   price: Types.Decimal128;
   category: Types.ObjectId;
   image?: string;
+  isAvailable: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,8 @@ const productSchema = new Schema<ProductDocument>(
       index: true,
     },
     image: { type: String, default: undefined },
+    isAvailable: { type: Boolean, default: true, required: true },
+    stock: { type: Number, default: 0, min: 0, required: true },
   },
   {
     timestamps: true,

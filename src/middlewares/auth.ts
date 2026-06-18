@@ -1,10 +1,11 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { User } from "../models/User";
+import { User, UserDocument } from "../models/User";
 import { env } from "../config/env";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
+  user?: UserDocument;
 }
 
 export const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -32,5 +33,9 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
   }
 
   req.userId = user._id.toString();
+  req.user = user;
   next();
 };
+
+// Alias for backward compatibility
+export const authenticate = requireAuth;

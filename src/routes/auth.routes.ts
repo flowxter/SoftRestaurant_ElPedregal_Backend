@@ -8,9 +8,10 @@ import { env } from "../config/env";
 import { asyncHandler } from "../middlewares/asyncHandler";
 import { validateBody } from "../middlewares/validate";
 import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
+import { authorize } from "../middlewares/authorize";
 import { PasswordResetToken } from "../models/PasswordResetToken";
 import { RefreshToken } from "../models/RefreshToken";
-import { User } from "../models/User";
+import { User, UserRole } from "../models/User";
 import { clearRefreshTokenCookie, setRefreshTokenCookie } from "../utils/cookies";
 import {
   createRefreshToken,
@@ -42,6 +43,10 @@ const profileSchema = z.object({
   phone: z.string().min(6).max(50),
 });
 
+const roleSchema = z.object({
+  role: z.enum(["admin", "employee", "user"]),
+});
+
 const deleteAccountSchema = z.object({
   password: z.string().min(8).max(128),
 });
@@ -63,13 +68,18 @@ const loginLimiter = rateLimit({
   message: { message: "too_many_attempts" },
 });
 
-function buildCurrentUser(user: { firstName?: string; lastName?: string; email: string }) {
+function buildCurrentUser(user: {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  role: UserRole;
+}) {
   const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Usuario";
   const initials = `${(user.firstName?.[0] ?? "").toUpperCase()}${(user.lastName?.[0] ?? "").toUpperCase()}` || "--";
   return {
     initials,
     name,
-    role: "Empleado",
+    role: user.role,
     email: user.email,
   };
 }
@@ -251,6 +261,27 @@ router.post(
     clearRefreshTokenCookie(res);
 
     return res.status(200).json({ message: "account_deleted" });
+  })
+);
+
+router.put(
+  "/users/:id/role",
+  asyncHandler(requireAuth),
+  authorize("admin"),
+  validateBody(roleSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const { role } = req.body as z.infer<typeof roleSchema>;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "user_not_found" });
+    }
+
+    user.role = role;
+    await user.save();
+
+    return res.status(200).json({ message: "role_updated" });
   })
 );
 

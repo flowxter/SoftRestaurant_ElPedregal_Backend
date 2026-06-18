@@ -27,6 +27,12 @@ const userSchema = new Schema<UserDocument>(
     firstName: { type: String, trim: true },
     lastName: { type: String, trim: true },
     phone: { type: String, trim: true },
+    role: {
+      type: String,
+      enum: ["admin", "employee", "user"],
+      default: "user",
+      required: true,
+    },
   },
   { timestamps: true }
 );
