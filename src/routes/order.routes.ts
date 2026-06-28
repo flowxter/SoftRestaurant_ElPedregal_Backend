@@ -6,9 +6,10 @@ import { asyncHandler } from "../middlewares/asyncHandler";
 import { authenticate, AuthenticatedRequest } from "../middlewares/auth";
 import { authorize } from "../middlewares/authorize";
 import { validateBody } from "../middlewares/validate";
-import { Order, OrderItem } from "../models/Order";
+import { Order, OrderItem, ORDER_STATUSES } from "../models/Order";
 import { Product } from "../models/Product";
 import { calculatePrice } from "../utils/pricing";
+import { allowedTargets, findTransition } from "../utils/orderStateMachine";
 
 const router = Router();
 
@@ -95,10 +96,85 @@ router.post(
       items: orderItems,
       total: mongoose.Types.Decimal128.fromString(total.toFixed(2)),
       status: "PENDIENTE",
+      statusHistory: [
+        {
+          from: null,
+          to: "PENDIENTE",
+          changedBy: req.user!._id,
+          changedAt: new Date(),
+        },
+      ],
     });
 
     return res.status(201).json({
       message: "order_created",
+      order: order.toJSON(),
+    });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/*  PATCH /:id/status  — cambiar estado del pedido                    */
+/* ------------------------------------------------------------------ */
+
+const statusUpdateSchema = z.object({
+  status: z.enum(ORDER_STATUSES),
+});
+
+router.patch(
+  "/:id/status",
+  authenticate,
+  validateBody(statusUpdateSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const id = req.params["id"] as string;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "invalid_order_id" });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: "order_not_found" });
+    }
+
+    const { status: target } = req.body as z.infer<typeof statusUpdateSchema>;
+    const current = order.status;
+
+    // Máquina de estados: ¿es una transición permitida?
+    const transition = findTransition(current, target);
+    if (!transition) {
+      return res.status(422).json({
+        message: "invalid_status_transition",
+        from: current,
+        to: target,
+        allowedTransitions: allowedTargets(current),
+      });
+    }
+
+    // Autorización por transición (rol y, si aplica, propiedad del pedido)
+    const role = req.user!.role;
+    if (!transition.roles.includes(role)) {
+      return res.status(403).json({
+        message: "forbidden_transition_for_role",
+        role,
+        allowedRoles: transition.roles,
+      });
+    }
+    if (transition.ownerOnly && !order.user.equals(req.user!._id)) {
+      return res.status(403).json({ message: "forbidden_not_order_owner" });
+    }
+
+    // Aplicar cambio + registrar usuario y timestamp
+    order.status = target;
+    order.statusHistory.push({
+      from: current,
+      to: target,
+      changedBy: req.user!._id,
+      changedAt: new Date(),
+    });
+    await order.save();
+
+    return res.status(200).json({
+      message: "order_status_updated",
       order: order.toJSON(),
     });
   })

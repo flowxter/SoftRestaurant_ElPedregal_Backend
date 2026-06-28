@@ -23,12 +23,20 @@ export interface OrderItem {
   subtotal: Types.Decimal128;
 }
 
+export interface OrderStatusChange {
+  from: OrderStatus | null;
+  to: OrderStatus;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
 export interface OrderDocument {
   _id: Types.ObjectId;
   user: Types.ObjectId;
   items: OrderItem[];
   total: Types.Decimal128;
   status: OrderStatus;
+  statusHistory: OrderStatusChange[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +52,16 @@ const orderItemSchema = new Schema<OrderItem>(
     unitPrice: { type: Schema.Types.Decimal128, required: true },
     quantity: { type: Number, required: true, min: 1 },
     subtotal: { type: Schema.Types.Decimal128, required: true },
+  },
+  { _id: false }
+);
+
+const orderStatusChangeSchema = new Schema<OrderStatusChange>(
+  {
+    from: { type: String, enum: ORDER_STATUSES, default: null },
+    to: { type: String, enum: ORDER_STATUSES, required: true },
+    changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    changedAt: { type: Date, required: true, default: Date.now },
   },
   { _id: false }
 );
@@ -71,6 +89,10 @@ const orderSchema = new Schema<OrderDocument>(
       default: "PENDIENTE",
       required: true,
       index: true,
+    },
+    statusHistory: {
+      type: [orderStatusChangeSchema],
+      default: [],
     },
   },
   {
