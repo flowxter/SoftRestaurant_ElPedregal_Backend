@@ -1,41 +1,41 @@
-import { RequestHandler } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-
-import { env } from "../config/env";
 import { User, UserDocument } from "../models/User";
+import { env } from "../config/env";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: UserDocument;
-    }
-  }
+export interface AuthenticatedRequest extends Request {
+  userId?: string;
+  user?: UserDocument;
 }
 
-export const authenticate: RequestHandler = async (req, res, next) => {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "token_required" });
+export const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const authorization = req.headers.authorization;
+  if (!authorization?.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "unauthorized" });
   }
 
-  const token = header.slice(7);
+  const token = authorization.replace(/^Bearer\s+/i, "");
 
   let payload: jwt.JwtPayload;
   try {
     payload = jwt.verify(token, env.JWT_SECRET) as jwt.JwtPayload;
   } catch {
-    return res.status(401).json({ message: "invalid_token" });
+    return res.status(401).json({ message: "unauthorized" });
   }
 
-  if (!payload.sub) {
-    return res.status(401).json({ message: "invalid_token" });
+  if (!payload?.sub || typeof payload.sub !== "string") {
+    return res.status(401).json({ message: "unauthorized" });
   }
 
   const user = await User.findById(payload.sub);
   if (!user) {
-    return res.status(401).json({ message: "user_not_found" });
+    return res.status(401).json({ message: "unauthorized" });
   }
 
+  req.userId = user._id.toString();
   req.user = user;
-  return next();
+  next();
 };
+
+// Alias for backward compatibility
+export const authenticate = requireAuth;

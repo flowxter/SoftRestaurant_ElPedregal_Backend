@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 
 import { env } from "../config/env";
 
@@ -17,15 +17,19 @@ export const createRefreshToken = () => {
 };
 
 export const signAccessToken = (userId: string) => {
-  return jwt.sign({ sub: userId }, env.JWT_SECRET, {
+  return jwt.sign({ sub: userId }, env.JWT_SECRET as jwt.Secret, {
     expiresIn: env.JWT_EXPIRES_IN,
-  });
+  } as jwt.SignOptions);
 };
 
 export const signResetToken = (userId: string, jti: string) => {
-  return jwt.sign({ sub: userId, jti, type: "password_reset" }, env.RESET_TOKEN_SECRET, {
-    expiresIn: `${env.RESET_TOKEN_EXPIRES_MINUTES}m`,
-  });
+  return jwt.sign(
+    { sub: userId, jti, type: "password_reset" },
+    env.RESET_TOKEN_SECRET as jwt.Secret,
+    {
+      expiresIn: `${env.RESET_TOKEN_EXPIRES_MINUTES}m`,
+    } as jwt.SignOptions
+  );
 };
 
 export const verifyResetToken = (token: string) => {
