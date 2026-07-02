@@ -1,0 +1,121 @@
+import { Schema, model, Types } from "mongoose";
+
+export type OrderStatus =
+  | "PENDIENTE"
+  | "CONFIRMADO"
+  | "EN_PREPARACION"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export const ORDER_STATUSES: OrderStatus[] = [
+  "PENDIENTE",
+  "CONFIRMADO",
+  "EN_PREPARACION",
+  "ENTREGADO",
+  "CANCELADO",
+];
+
+export interface OrderItem {
+  product: Types.ObjectId;
+  name: string;
+  unitPrice: Types.Decimal128;
+  quantity: number;
+  subtotal: Types.Decimal128;
+}
+
+export interface OrderStatusChange {
+  from: OrderStatus | null;
+  to: OrderStatus;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
+export interface OrderDocument {
+  _id: Types.ObjectId;
+  user: Types.ObjectId;
+  items: OrderItem[];
+  total: Types.Decimal128;
+  status: OrderStatus;
+  statusHistory: OrderStatusChange[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const orderItemSchema = new Schema<OrderItem>(
+  {
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+    name: { type: String, required: true, trim: true },
+    unitPrice: { type: Schema.Types.Decimal128, required: true },
+    quantity: { type: Number, required: true, min: 1 },
+    subtotal: { type: Schema.Types.Decimal128, required: true },
+  },
+  { _id: false }
+);
+
+const orderStatusChangeSchema = new Schema<OrderStatusChange>(
+  {
+    from: { type: String, enum: ORDER_STATUSES, default: null },
+    to: { type: String, enum: ORDER_STATUSES, required: true },
+    changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    changedAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false }
+);
+
+const orderSchema = new Schema<OrderDocument>(
+  {
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    items: {
+      type: [orderItemSchema],
+      required: true,
+      validate: {
+        validator: (items: OrderItem[]) => items.length > 0,
+        message: "order must contain at least one item",
+      },
+    },
+    total: { type: Schema.Types.Decimal128, required: true },
+    status: {
+      type: String,
+      enum: ORDER_STATUSES,
+      default: "PENDIENTE",
+      required: true,
+      index: true,
+    },
+    statusHistory: {
+      type: [orderStatusChangeSchema],
+      default: [],
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: (_doc, ret: Record<string, unknown>) => {
+        if (ret["total"] != null) {
+          ret["total"] = parseFloat(String(ret["total"]));
+        }
+        if (Array.isArray(ret["items"])) {
+          for (const item of ret["items"] as Record<string, unknown>[]) {
+            if (item["unitPrice"] != null) {
+              item["unitPrice"] = parseFloat(String(item["unitPrice"]));
+            }
+            if (item["subtotal"] != null) {
+              item["subtotal"] = parseFloat(String(item["subtotal"]));
+            }
+          }
+        }
+        return ret;
+      },
+    },
+  }
+);
+
+export const Order = model<OrderDocument>("Order", orderSchema);
