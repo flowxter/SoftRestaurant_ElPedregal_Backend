@@ -69,12 +69,13 @@ router.get(
   authenticate,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
+    const productId = typeof id === "string" ? id : "";
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ message: "invalid_product_id" });
     }
 
-    const product = await Product.findById(id).populate("category");
+    const product = await Product.findById(productId).populate("category");
     if (!product) {
       return res.status(404).json({ message: "product_not_found" });
     }
@@ -151,13 +152,14 @@ router.patch(
   uploadProductImage.single("image"),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { id } = req.params;
+    const productId = typeof id === "string" ? id : "";
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
       if (req.file) await fs.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ message: "invalid_product_id" });
     }
 
-    const product = await Product.findById(id);
+    const product = await Product.findById(productId);
     if (!product) {
       if (req.file) await fs.unlink(req.file.path).catch(() => {});
       return res.status(404).json({ message: "product_not_found" });
@@ -194,7 +196,7 @@ router.patch(
       const duplicate = await Product.findOne({
         name,
         category: targetCategory,
-        _id: { $ne: id },
+        _id: { $ne: productId },
       });
       if (duplicate) {
         if (req.file) await fs.unlink(req.file.path).catch(() => {});
@@ -271,12 +273,13 @@ router.delete(
   authorize("admin"),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
+    const productId = typeof id === "string" ? id : "";
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ message: "invalid_product_id" });
     }
 
-    const product = await Product.findByIdAndDelete(id);
+    const product = await Product.findByIdAndDelete(productId);
     if (!product) {
       return res.status(404).json({ message: "product_not_found" });
     }

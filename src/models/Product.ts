@@ -8,6 +8,7 @@ export interface ProductDocument {
   category: Types.ObjectId;
   image?: string;
   isAvailable: boolean;
+  stock: number;
   createdAt: Date;
   updatedAt: Date;
 }
