@@ -13,6 +13,7 @@ import orderRoutes from "./routes/order.routes";
 import productRoutes from "./routes/product.routes";
 import promotionRoutes from "./routes/promotion.routes";
 import reportRoutes from "./routes/report.routes";
+import reportsRoutes from "./routes/reports.routes";
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/promotions", promotionRoutes);
+app.use("/api/reports", reportsRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/reports", reportRoutes);
 
