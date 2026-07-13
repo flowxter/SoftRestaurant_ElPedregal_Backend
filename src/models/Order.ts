@@ -15,6 +15,14 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "CANCELADO",
 ];
 
+export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
+
+export const PAYMENT_METHODS: PaymentMethod[] = [
+  "EFECTIVO",
+  "TARJETA",
+  "TRANSFERENCIA",
+];
+
 export interface OrderItem {
   product: Types.ObjectId;
   name: string;
@@ -36,6 +44,7 @@ export interface OrderDocument {
   items: OrderItem[];
   total: Types.Decimal128;
   status: OrderStatus;
+  paymentMethod: PaymentMethod;
   statusHistory: OrderStatusChange[];
   createdAt: Date;
   updatedAt: Date;
@@ -90,6 +99,12 @@ const orderSchema = new Schema<OrderDocument>(
       required: true,
       index: true,
     },
+    paymentMethod: {
+      type: String,
+      enum: PAYMENT_METHODS,
+      default: "EFECTIVO",
+      required: true,
+    },
     statusHistory: {
       type: [orderStatusChangeSchema],
       default: [],
@@ -117,5 +132,13 @@ const orderSchema = new Schema<OrderDocument>(
     },
   }
 );
+
+/*
+ * Índices para reportes de ventas: el rango de fechas (createdAt) es la
+ * condición común, y status/paymentMethod son los filtros de igualdad.
+ */
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ paymentMethod: 1, createdAt: -1 });
 
 export const Order = model<OrderDocument>("Order", orderSchema);

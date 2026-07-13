@@ -6,7 +6,12 @@ import { asyncHandler } from "../middlewares/asyncHandler";
 import { authenticate, AuthenticatedRequest } from "../middlewares/auth";
 import { authorize } from "../middlewares/authorize";
 import { validateBody } from "../middlewares/validate";
-import { Order, OrderItem, ORDER_STATUSES } from "../models/Order";
+import {
+  Order,
+  OrderItem,
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+} from "../models/Order";
 import { Product } from "../models/Product";
 import { calculatePrice } from "../utils/pricing";
 import { allowedTargets, findTransition } from "../utils/orderStateMachine";
@@ -26,6 +31,7 @@ const orderCreateSchema = z.object({
       })
     )
     .min(1),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional(),
 });
 
 function round2(value: number): number {
@@ -42,7 +48,9 @@ router.post(
   authorize("user"),
   validateBody(orderCreateSchema),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { items } = req.body as z.infer<typeof orderCreateSchema>;
+    const { items, paymentMethod } = req.body as z.infer<
+      typeof orderCreateSchema
+    >;
 
     // Combinar cantidades de productos repetidos en el pedido
     const quantities = new Map<string, number>();
@@ -96,6 +104,7 @@ router.post(
       items: orderItems,
       total: mongoose.Types.Decimal128.fromString(total.toFixed(2)),
       status: "PENDIENTE",
+      ...(paymentMethod ? { paymentMethod } : {}),
       statusHistory: [
         {
           from: null,
