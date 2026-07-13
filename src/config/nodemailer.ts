@@ -2,11 +2,11 @@ import nodemailer, { Transporter } from 'nodemailer'
 import { env } from './env'
 
 /**
- * Nodemailer transport instance configured for Gmail in development.
- * In other environments it can fallback to the generic SMTP transport.
+ * Nodemailer transport instance configured for Gmail when credentials are available.
+ * If they are not configured, the transport falls back to a local SMTP stub.
  */
 const transportOptions =
-  env.NODE_ENV === 'development'
+  env.NODE_ENV === 'development' || env.GMAIL_USER
     ? {
         service: 'gmail',
         auth: {
@@ -15,12 +15,12 @@ const transportOptions =
         },
       }
     : {
-        host: env.EMAIL_HOST,
-        port: env.EMAIL_PORT,
-        secure: env.EMAIL_PORT === 465,
+        host: 'localhost',
+        port: 587,
+        secure: false,
         auth: {
-          user: env.EMAIL_USER,
-          pass: env.EMAIL_PASS,
+          user: '',
+          pass: '',
         },
       }
 
