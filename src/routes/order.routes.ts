@@ -3,8 +3,7 @@ import mongoose from "mongoose";
 import { z } from "zod";
 
 import { asyncHandler } from "../middlewares/asyncHandler";
-import { authenticate, AuthenticatedRequest } from "../middlewares/auth";
-import { authorize } from "../middlewares/authorize";
+import { authenticate, optionalAuth, AuthenticatedRequest } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import {
   Order,
@@ -32,6 +31,9 @@ const orderCreateSchema = z.object({
     )
     .min(1),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
+  // Datos del invitado (obligatorios solo si el pedido no viene autenticado).
+  customerName: z.string().trim().min(1).max(120).optional(),
+  customerPhone: z.string().trim().min(7).max(20).optional(),
 });
 
 function round2(value: number): number {
@@ -44,13 +46,18 @@ function round2(value: number): number {
 
 router.post(
   "/",
-  authenticate,
-  authorize("user"),
+  optionalAuth,
   validateBody(orderCreateSchema),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { items, paymentMethod } = req.body as z.infer<
+    const { items, paymentMethod, customerName, customerPhone } = req.body as z.infer<
       typeof orderCreateSchema
     >;
+
+    // Si no hay usuario autenticado, el pedido es de un invitado y exige
+    // identificarse con nombre y teléfono.
+    if (!req.user && (!customerName || !customerPhone)) {
+      return res.status(400).json({ message: "guest_requires_name_and_phone" });
+    }
 
     // Combinar cantidades de productos repetidos en el pedido
     const quantities = new Map<string, number>();
@@ -100,7 +107,9 @@ router.post(
     }
 
     const order = await Order.create({
-      user: req.user!._id,
+      ...(req.user ? { user: req.user._id } : {}),
+      ...(customerName ? { customerName } : {}),
+      ...(customerPhone ? { customerPhone } : {}),
       items: orderItems,
       total: mongoose.Types.Decimal128.fromString(total.toFixed(2)),
       status: "PENDIENTE",
@@ -109,7 +118,7 @@ router.post(
         {
           from: null,
           to: "PENDIENTE",
-          changedBy: req.user!._id,
+          ...(req.user ? { changedBy: req.user._id } : {}),
           changedAt: new Date(),
         },
       ],
@@ -168,7 +177,9 @@ router.patch(
         allowedRoles: transition.roles,
       });
     }
-    if (transition.ownerOnly && !order.user.equals(req.user!._id)) {
+    // Un pedido de invitado (sin `user`) no tiene dueño, así que nadie puede
+    // ejecutar una transición restringida al propietario.
+    if (transition.ownerOnly && (!order.user || !order.user.equals(req.user!._id))) {
       return res.status(403).json({ message: "forbidden_not_order_owner" });
     }
 
