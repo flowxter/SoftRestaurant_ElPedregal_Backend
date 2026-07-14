@@ -3,6 +3,12 @@ import { z } from "zod";
 
 dotenv.config();
 
+console.log("===== DEBUG ENV =====");
+console.log("MONGODB_URI:", process.env.MONGODB_URI);
+console.log("JWT_SECRET:", process.env.JWT_SECRET);
+console.log("RESET_TOKEN_SECRET:", process.env.RESET_TOKEN_SECRET);
+console.log("=====================");
+
 const booleanFromEnv = z.preprocess((value) => {
   if (typeof value === "string") {
     return value.toLowerCase() === "true";
