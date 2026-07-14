@@ -5,6 +5,7 @@ export type OrderStatus =
   | "CONFIRMADO"
   | "EN_PREPARACION"
   | "ENTREGADO"
+  | "FACTURADO"
   | "CANCELADO";
 
 export const ORDER_STATUSES: OrderStatus[] = [
@@ -12,6 +13,7 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "CONFIRMADO",
   "EN_PREPARACION",
   "ENTREGADO",
+  "FACTURADO",
   "CANCELADO",
 ];
 
@@ -40,9 +42,12 @@ export interface OrderStatusChange {
 
 export interface OrderDocument {
   _id: Types.ObjectId;
+  number?: number;
   user?: Types.ObjectId;
   customerName?: string;
   customerPhone?: string;
+  table?: string;
+  notes?: string;
   items: OrderItem[];
   total: Types.Decimal128;
   status: OrderStatus;
@@ -79,6 +84,8 @@ const orderStatusChangeSchema = new Schema<OrderStatusChange>(
 
 const orderSchema = new Schema<OrderDocument>(
   {
+    // Número de pedido legible/secuencial (para mostrar y enrutar en la UI).
+    number: { type: Number, unique: true, sparse: true, index: true },
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -88,6 +95,9 @@ const orderSchema = new Schema<OrderDocument>(
     // Datos del cliente cuando el pedido lo hace un invitado (sin cuenta).
     customerName: { type: String, trim: true },
     customerPhone: { type: String, trim: true },
+    // Mesa/ubicación y notas del pedido (lo que muestra y edita la UI).
+    table: { type: String, trim: true },
+    notes: { type: String, trim: true },
     items: {
       type: [orderItemSchema],
       required: true,

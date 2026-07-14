@@ -5,18 +5,21 @@ export interface OrderTransition {
   to: OrderStatus;
   /** Roles autorizados a ejecutar esta transición. */
   roles: UserRole[];
-  /** Si true, además del rol se exige ser el dueño del pedido. */
+  /**
+   * Si true, se exige ser el dueño del pedido. Esta restricción solo se aplica
+   * al rol "user" (cliente); el personal (admin/employee) la omite.
+   */
   ownerOnly?: boolean;
 }
 
 /**
- * Máquina de estados de los pedidos.
- * Para cada estado se listan las transiciones permitidas y quién puede hacerlas.
- * Los estados sin transiciones (ENTREGADO, CANCELADO) son terminales.
+ * Máquina de estados de los pedidos, alineada con el flujo de la UI:
+ * Pendiente → Preparación → Entregado → Facturado.
+ * Los estados sin transiciones (FACTURADO, CANCELADO) son terminales.
  */
 export const ORDER_TRANSITIONS: Record<OrderStatus, OrderTransition[]> = {
   PENDIENTE: [
-    { to: "CONFIRMADO", roles: ["admin", "employee"] },
+    { to: "EN_PREPARACION", roles: ["admin", "employee"] },
     { to: "CANCELADO", roles: ["admin", "employee", "user"], ownerOnly: true },
   ],
   CONFIRMADO: [
@@ -24,10 +27,12 @@ export const ORDER_TRANSITIONS: Record<OrderStatus, OrderTransition[]> = {
     { to: "CANCELADO", roles: ["admin", "employee"] },
   ],
   EN_PREPARACION: [
+    { to: "PENDIENTE", roles: ["admin", "employee"] },
     { to: "ENTREGADO", roles: ["admin", "employee"] },
     { to: "CANCELADO", roles: ["admin"] },
   ],
-  ENTREGADO: [],
+  ENTREGADO: [{ to: "FACTURADO", roles: ["admin", "employee"] }],
+  FACTURADO: [],
   CANCELADO: [],
 };
 
