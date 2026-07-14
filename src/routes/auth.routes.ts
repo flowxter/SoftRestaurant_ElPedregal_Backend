@@ -7,9 +7,11 @@ import { z } from "zod";
 import { env } from "../config/env";
 import { asyncHandler } from "../middlewares/asyncHandler";
 import { validateBody } from "../middlewares/validate";
+import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
+import { authorize } from "../middlewares/authorize";
 import { PasswordResetToken } from "../models/PasswordResetToken";
 import { RefreshToken } from "../models/RefreshToken";
-import { User } from "../models/User";
+import { User, UserRole } from "../models/User";
 import { clearRefreshTokenCookie, setRefreshTokenCookie } from "../utils/cookies";
 import {
   createRefreshToken,
@@ -22,12 +24,30 @@ import {
 const router = Router();
 
 const registerSchema = z.object({
+  firstName: z.string().min(1).max(255),
+  lastName: z.string().min(1).max(255),
+  phone: z.string().min(6).max(50),
   email: z.string().email().min(5).max(255),
   password: z.string().min(8).max(128),
 });
 
 const loginSchema = z.object({
   email: z.string().email().min(5).max(255),
+  password: z.string().min(8).max(128),
+});
+
+const profileSchema = z.object({
+  firstName: z.string().min(1).max(255),
+  lastName: z.string().min(1).max(255),
+  email: z.string().email().min(5).max(255),
+  phone: z.string().min(6).max(50),
+});
+
+const roleSchema = z.object({
+  role: z.enum(["admin", "employee", "user"]),
+});
+
+const deleteAccountSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
@@ -48,11 +68,27 @@ const loginLimiter = rateLimit({
   message: { message: "too_many_attempts" },
 });
 
+function buildCurrentUser(user: {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  role: UserRole;
+}) {
+  const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Usuario";
+  const initials = `${(user.firstName?.[0] ?? "").toUpperCase()}${(user.lastName?.[0] ?? "").toUpperCase()}` || "--";
+  return {
+    initials,
+    name,
+    role: user.role,
+    email: user.email,
+  };
+}
+
 router.post(
   "/register",
   validateBody(registerSchema),
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body as z.infer<typeof registerSchema>;
+    const { firstName, lastName, phone, email, password } = req.body as z.infer<typeof registerSchema>;
     const normalizedEmail = email.toLowerCase();
 
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -61,7 +97,13 @@ router.post(
     }
 
     const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
-    const user = await User.create({ email: normalizedEmail, passwordHash });
+    const user = await User.create({
+      email: normalizedEmail,
+      passwordHash,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+    });
 
     return res.status(201).json({ id: user._id.toString() });
   })
@@ -118,6 +160,131 @@ router.post(
   })
 );
 
+router.get(
+  "/users/current",
+  asyncHandler(requireAuth),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    return res.status(200).json({
+      message: "current_user_loaded",
+      user: buildCurrentUser(user),
+    });
+  })
+);
+
+router.get(
+  "/users/profile",
+  asyncHandler(requireAuth),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    return res.status(200).json({
+      message: "profile_loaded",
+      profile: {
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        email: user.email,
+        phone: user.phone ?? "",
+      },
+    });
+  })
+);
+
+router.put(
+  "/users/profile",
+  asyncHandler(requireAuth),
+  validateBody(profileSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { firstName, lastName, email, phone } = req.body as z.infer<typeof profileSchema>;
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    const existingEmailUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    });
+    if (existingEmailUser) {
+      return res.status(409).json({
+        message: "email_in_use",
+        errors: { email: "Este correo ya está en uso." },
+      });
+    }
+
+    user.firstName = firstName.trim();
+    user.lastName = lastName.trim();
+    user.email = normalizedEmail;
+    user.phone = phone.trim();
+    await user.save();
+
+    return res.status(200).json({
+      message: "profile_updated",
+      profile: {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone ?? "",
+      },
+    });
+  })
+);
+
+router.post(
+  "/users/delete-account",
+  asyncHandler(requireAuth),
+  validateBody(deleteAccountSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { password } = req.body as z.infer<typeof deleteAccountSchema>;
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      return res.status(401).json({ message: "invalid_credentials" });
+    }
+
+    await User.findByIdAndDelete(user._id);
+    await RefreshToken.updateMany({ userId: user._id, revokedAt: null }, { revokedAt: new Date() });
+    clearRefreshTokenCookie(res);
+
+    return res.status(200).json({ message: "account_deleted" });
+  })
+);
+
+router.put(
+  "/users/:id/role",
+  asyncHandler(requireAuth),
+  authorize("admin"),
+  validateBody(roleSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const { role } = req.body as z.infer<typeof roleSchema>;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "user_not_found" });
+    }
+
+    user.role = role;
+    await user.save();
+
+    return res.status(200).json({ message: "role_updated" });
+  })
+);
+
 router.post(
   "/forgot-password",
   validateBody(forgotPasswordSchema),
@@ -126,12 +293,17 @@ router.post(
     const normalizedEmail = email.toLowerCase();
 
     const user = await User.findOne({ email: normalizedEmail });
-    let resetToken: string | undefined;
+    
+    // Always return success to prevent email enumeration attacks
+    if (!user) {
+      return res.status(200).json({
+        message: "reset_token_sent",
+      });
+    }
 
-    if (user) {
+    try {
       const jti = crypto.randomBytes(16).toString("hex");
-      resetToken = signResetToken(user._id.toString(), jti);
-
+      const resetToken = signResetToken(user._id.toString(), jti);
       const tokenHash = hashToken(resetToken);
       const expiresAt = new Date(
         Date.now() + env.RESET_TOKEN_EXPIRES_MINUTES * 60 * 1000
@@ -142,17 +314,20 @@ router.post(
         tokenHash,
         expiresAt,
       });
+
+      // Send email with reset link
+      const { PasswordRecoveryEmail } = await import("../utils/passwordRecoveryEmail");
+      await PasswordRecoveryEmail.sendRecoveryEmail(user.email, resetToken);
+
+      console.log(`[forgot-password] Password recovery email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error("[forgot-password] Failed to send email:", emailError);
+      // Don't expose internal email errors to client
     }
 
-    const payload: { message: string; resetToken?: string } = {
+    return res.status(200).json({
       message: "reset_token_sent",
-    };
-
-    if (resetToken && env.NODE_ENV !== "production") {
-      payload.resetToken = resetToken;
-    }
-
-    return res.status(200).json(payload);
+    });
   })
 );
 
@@ -192,10 +367,22 @@ router.post(
     }
 
     const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
-    await User.findByIdAndUpdate(resetRecord.userId, { passwordHash });
+    const user = await User.findByIdAndUpdate(resetRecord.userId, { passwordHash });
 
     resetRecord.usedAt = new Date();
     await resetRecord.save();
+
+    // Send confirmation email
+    try {
+      if (user) {
+        const { PasswordRecoveryEmail } = await import("../utils/passwordRecoveryEmail");
+        const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Usuario";
+        await PasswordRecoveryEmail.sendPasswordChangedEmail(user.email, name);
+      }
+    } catch (emailError) {
+      console.error("[reset-password] Failed to send confirmation email:", emailError);
+      // Don't fail the password reset if email fails
+    }
 
     return res.status(200).json({ message: "password_reset_ok" });
   })
