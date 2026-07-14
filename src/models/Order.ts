@@ -5,6 +5,7 @@ export type OrderStatus =
   | "CONFIRMADO"
   | "EN_PREPARACION"
   | "ENTREGADO"
+  | "FACTURADO"
   | "CANCELADO";
 
 export const ORDER_STATUSES: OrderStatus[] = [
@@ -12,6 +13,7 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "CONFIRMADO",
   "EN_PREPARACION",
   "ENTREGADO",
+  "FACTURADO",
   "CANCELADO",
 ];
 
