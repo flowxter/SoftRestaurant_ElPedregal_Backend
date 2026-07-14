@@ -11,6 +11,7 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
 } from "../models/Order";
+import { getNextSequence } from "../models/Counter";
 import { Product } from "../models/Product";
 import { calculatePrice } from "../utils/pricing";
 import { allowedTargets, findTransition } from "../utils/orderStateMachine";
@@ -34,6 +35,9 @@ const orderCreateSchema = z.object({
   // Datos del invitado (obligatorios solo si el pedido no viene autenticado).
   customerName: z.string().trim().min(1).max(120).optional(),
   customerPhone: z.string().trim().min(7).max(20).optional(),
+  // Mesa/ubicación y notas (opcionales) que muestra y edita la UI.
+  table: z.string().trim().max(120).optional(),
+  notes: z.string().trim().max(500).optional(),
 });
 
 function round2(value: number): number {
@@ -49,9 +53,8 @@ router.post(
   optionalAuth,
   validateBody(orderCreateSchema),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { items, paymentMethod, customerName, customerPhone } = req.body as z.infer<
-      typeof orderCreateSchema
-    >;
+    const { items, paymentMethod, customerName, customerPhone, table, notes } =
+      req.body as z.infer<typeof orderCreateSchema>;
 
     // Si no hay usuario autenticado, el pedido es de un invitado y exige
     // identificarse con nombre y teléfono.
@@ -106,10 +109,15 @@ router.post(
       });
     }
 
+    const number = await getNextSequence("order");
+
     const order = await Order.create({
+      number,
       ...(req.user ? { user: req.user._id } : {}),
       ...(customerName ? { customerName } : {}),
       ...(customerPhone ? { customerPhone } : {}),
+      ...(table ? { table } : {}),
+      ...(notes ? { notes } : {}),
       items: orderItems,
       total: mongoose.Types.Decimal128.fromString(total.toFixed(2)),
       status: "PENDIENTE",
@@ -126,6 +134,59 @@ router.post(
 
     return res.status(201).json({
       message: "order_created",
+      order: order.toJSON(),
+    });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/*  GET /  — listar pedidos                                           */
+/*  Personal (admin/employee): todos. Cliente (user): solo los suyos. */
+/* ------------------------------------------------------------------ */
+
+router.get(
+  "/",
+  authenticate,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const role = req.user!.role;
+    const isStaff = role === "admin" || role === "employee";
+    const query = isStaff ? {} : { user: req.user!._id };
+
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "orders_retrieved",
+      orders: orders.map((o) => o.toJSON()),
+    });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/*  GET /:number  — detalle de un pedido por su número                */
+/* ------------------------------------------------------------------ */
+
+router.get(
+  "/:number",
+  authenticate,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const number = Number(req.params["number"]);
+    if (!Number.isInteger(number)) {
+      return res.status(400).json({ message: "invalid_order_number" });
+    }
+
+    const order = await Order.findOne({ number });
+    if (!order) {
+      return res.status(404).json({ message: "order_not_found" });
+    }
+
+    // Un cliente solo puede ver sus propios pedidos.
+    const role = req.user!.role;
+    if (role === "user" && (!order.user || !order.user.equals(req.user!._id))) {
+      return res.status(403).json({ message: "forbidden" });
+    }
+
+    return res.status(200).json({
+      message: "order_retrieved",
       order: order.toJSON(),
     });
   })
