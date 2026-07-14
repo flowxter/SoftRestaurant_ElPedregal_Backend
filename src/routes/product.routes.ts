@@ -51,9 +51,9 @@ const productUpdateSchema = z.object({
 });
 
 // ─── GET /api/products ───────────────────────────────────────────────────────
+// Público: cualquiera puede ver el menú sin iniciar sesión.
 router.get(
   "/",
-  authenticate,
   asyncHandler(async (req, res) => {
     const products = await Product.find().populate("category").lean();
     return res.status(200).json({
@@ -64,9 +64,9 @@ router.get(
 );
 
 // ─── GET /api/products/:id ───────────────────────────────────────────────────
+// Público: detalle de producto visible sin iniciar sesión.
 router.get(
   "/:id",
-  authenticate,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const productId = typeof id === "string" ? id : "";

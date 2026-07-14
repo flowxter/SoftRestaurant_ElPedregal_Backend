@@ -34,13 +34,15 @@ export interface OrderItem {
 export interface OrderStatusChange {
   from: OrderStatus | null;
   to: OrderStatus;
-  changedBy: Types.ObjectId;
+  changedBy?: Types.ObjectId;
   changedAt: Date;
 }
 
 export interface OrderDocument {
   _id: Types.ObjectId;
-  user: Types.ObjectId;
+  user?: Types.ObjectId;
+  customerName?: string;
+  customerPhone?: string;
   items: OrderItem[];
   total: Types.Decimal128;
   status: OrderStatus;
@@ -69,7 +71,7 @@ const orderStatusChangeSchema = new Schema<OrderStatusChange>(
   {
     from: { type: String, enum: ORDER_STATUSES, default: null },
     to: { type: String, enum: ORDER_STATUSES, required: true },
-    changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    changedBy: { type: Schema.Types.ObjectId, ref: "User", required: false },
     changedAt: { type: Date, required: true, default: Date.now },
   },
   { _id: false }
@@ -80,9 +82,12 @@ const orderSchema = new Schema<OrderDocument>(
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
       index: true,
     },
+    // Datos del cliente cuando el pedido lo hace un invitado (sin cuenta).
+    customerName: { type: String, trim: true },
+    customerPhone: { type: String, trim: true },
     items: {
       type: [orderItemSchema],
       required: true,
